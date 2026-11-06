@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Países Productores - Visualizador de Redes</title>
+  
+  <!-- Tipografía geométrica solicitada (Nunito) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- D3 v7: Única librería de renderizado y cálculo -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+  <style>
+    /* ==========================================
+       1. CONFIGURACIÓN VISUAL (CSS)
+       ========================================== */
+    /* // AJUSTABLE: Paleta de la interfaz y tipografía */
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --primary-color: #3b82f6;
+      --primary-hover: #2563eb;
+      --font-family: 'Nunito', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Cabecera y Pestañas */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .app-title { font-weight: 700; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+    
+    .tabs { display: flex; gap: 0.5rem; background: #f1f5f9; padding: 0.25rem; border-radius: 0.5rem; }
+    .tab-btn {
+      border: none; background: transparent; padding: 0.5rem 1rem; border-radius: 0.375rem;
+      font-family: inherit; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-main); }
+    .tab-btn.active { background: var(--card-bg); color: var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+    /* Contenedor Principal */
+    .main-area { display: flex; flex: 1; overflow: hidden; position: relative; }
+    #viz-container { flex: 1; position: relative; cursor: grab; background: var(--bg-color); }
+    #viz-container:active { cursor: grabbing; }
+    svg { width: 100%; height: 100%; display: block; }
+
+    /* Barra Lateral */
+    .sidebar {
+      width: 320px; background: var(--card-bg); border-left: 1px solid var(--border-color);
+      display: flex; flex-direction: column; transition: transform 0.3s ease; z-index: 5;
+    }
+    .sidebar.collapsed { transform: translateX(100%); position: absolute; right: 0; height: 100%; }
+    .sidebar-toggle {
+      position: absolute; left: -32px; top: 1rem; width: 32px; height: 32px;
+      background: var(--card-bg); border: 1px solid var(--border-color); border-right: none;
+      border-radius: 0.5rem 0 0 0.5rem; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; font-weight: bold; color: var(--text-muted);
+    }
+    .sidebar-content { padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.5rem; }
+    
+    .section-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem; margin-bottom: 0.75rem; }
+
+    /* Botones y Formularios */
+    .btn {
+      width: 100%; padding: 0.6rem; border-radius: 0.375rem; font-family: inherit; font-weight: 600;
+      cursor: pointer; border: 1px solid transparent; text-align: center; transition: 0.2s;
+    }
+    .btn-primary { background: var(--primary-color); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .file-wrapper { position: relative; margin-bottom: 0.5rem; }
+    .file-wrapper input[type=file] { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+    .checkbox-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; margin-bottom: 0.5rem; }
+    .checkbox-label input { accent-color: var(--primary-color); }
+
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; margin-bottom: 0.4rem; }
+    .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+
+    /* Alertas */
+    .alert { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 0.75rem; font-size: 0.8rem; color: #92400e; margin-bottom: 0.5rem; border-radius: 0.25rem; }
+    
+    /* Overlay Inicial */
+    .overlay {
+      position: absolute; inset: 0; background: rgba(248, 250, 252, 0.9); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; z-index: 20;
+    }
+    .overlay-card { background: var(--card-bg); padding: 2rem; border-radius: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 400px; border: 1px solid var(--border-color); }
+
+    /* Tooltips */
+    .tooltip {
+      position: absolute; pointer-events: none; background: rgba(15, 23, 42, 0.95); color: #fff;
+      padding: 0.75rem; border-radius: 0.375rem; font-size: 0.8rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      opacity: 0; transition: opacity 0.15s; z-index: 30; max-width: 250px; line-height: 1.4;
+    }
+    .tooltip-header { font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 0.25rem; margin-bottom: 0.25rem; }
+
+    /* Animaciones D3 */
+    .node, .link-path, .chord-ribbon, .node-label { transition: opacity 0.3s ease; }
+    .node-label { font-size: 11px; font-weight: 700; fill: var(--text-main); pointer-events: none; }
+  </style>
+</head>
+<body>
+
+  <!-- 8 INTERFAZ (ENCABEZADO Y PESTAÑAS) -->
+  <header>
+    <div class="app-title">🌐 [Países Productores]</div>
+    <div class="tabs" id="mode-tabs">
+      <button class="tab-btn active" data-mode="cuerdas">Cuerdas</button>
+      <button class="tab-btn" data-mode="concentrico">Concéntrico</button>
+      <button class="tab-btn" data-mode="edgeBundling">Edge Bundling</button>
+    </div>
+  </header>
+
+  <div class="main-area">
+    <!-- Contenedor del Grafo -->
+    <div id="viz-container"><svg id="viz"></svg></div>
+
+    <!-- Barra Lateral -->
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebar-toggle">›</button>
+      <div class="sidebar-content">
+        
+        <div>
+          <div class="section-title">Datos CSV</div>
+          <div class="file-wrapper">
+            <button class="btn btn-primary">Cargar Nodos (Points)</button>
+            <input type="file" id="nodes-file" accept=".csv">
+          </div>
+          <div class="file-wrapper">
+            <button class="btn btn-primary">Cargar Conexiones (Links)</button>
+            <input type="file" id="links-file" accept=".csv">
+          </div>
+          <div id="alerts-container"></div>
+        </div>
+
+        <div>
+          <div class="section-title">Capas</div>
+          <label class="checkbox-label"><input type="checkbox" id="layer-nodes" checked> Mostrar Nodos</label>
+          <label class="checkbox-label"><input type="checkbox" id="layer-links" checked> Mostrar Conexiones</label>
+          <label class="checkbox-label"><input type="checkbox" id="layer-isolated"> Mostrar Aislados (<span id="isolated-count">0</span>)</label>
+        </div>
+
+        <div>
+          <div class="section-title">Leyenda y Filtros (Categorías)</div>
+          <div id="legend-container" style="font-size:0.85rem; color:var(--text-muted)">Carga los datos primero...</div>
+        </div>
+
+      </div>
+    </aside>
+  </div>
+
+  <div class="overlay" id="startup-overlay">
+    <div class="overlay-card">
+      <h2 style="margin-bottom:0.5rem">Visualizador de Redes</h2>
+      <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1.5rem">Carga ambos archivos para comenzar.</p>
+      <div class="file-wrapper">
+        <button class="btn btn-primary">1. Nodos (Points)</button>
+        <input type="file" id="overlay-nodes" accept=".csv">
+      </div>
+      <div class="file-wrapper">
+        <button class="btn btn-primary">2. Conexiones (Links)</button>
+        <input type="file" id="overlay-links" accept=".csv">
+      </div>
+      <div id="overlay-status" style="font-size:0.8rem; margin-top:1rem; color:var(--primary-color)"></div>
+    </div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    /* ==========================================
+       1 CONFIGURACIÓN
+       ========================================== */
+    // // AJUSTABLE: Parámetros base visuales
+    const CONF = {
+      radiusMin: 6, radiusMax: 18,       // Tamaño base de nodos: Medianos
+      linkMin: 2, linkMax: 6,            // Grosor de enlaces: Medios
+      colorScheme: d3.schemeSet2,        // Paleta categórica automática
+      dashArray: "5,5",                  // Patrón de línea punteada
+      lineDashedVal: "transito",         // Valor que activa línea punteada (Regla 6)
+      lineSolidVal: "exportacion"
+    };
+
+    /* ==========================================
+       2 ESTADO GLOBAL
+       ========================================== */
+    const state = {
+      rawNodes: [], rawLinks: [],
+      nodes: [], links: [],
+      categories: [], colors: {}, hiddenCats: new Set(),
+      colsN: {}, colsL: {}, // Índices de columnas (peso, tipo, sentido)
+      mode: 'cuerdas',
+      layers: { nodes: true, links: true, isolated: false },
+      selectedNode: null,  // Para el click highlighting
+      warnings: []
+    };
+
+    /* ==========================================
+       3 LECTURA DE CSV
+       ========================================== */
+    function parseCSV(text) {
+      if (!text) return [];
+      text = text.replace(/^\uFEFF/, '').trim();
+      const firstLine = text.split('\n')[0] || '';
+      const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+      return d3.dsvFormat(delimiter).parseRows(text).filter(r => r.length > 0 && r.join('').trim() !== '');
+    }
+
+    function handleFile(e, type) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        if (type === 'nodes') processNodes(evt.target.result);
+        else processLinks(evt.target.result);
+        checkReady();
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    function processNodes(text) {
+      const rows = parseCSV(text);
+      if (rows.length < 2) return;
+      
+      const headers = rows[0].map(h => h.trim());
+      state.colsN.weight = headers.length >= 3;
+
+      state.rawNodes = rows.slice(1).map(r => ({
+        name: (r[0] || '').trim(),
+        category: (r[1] || 'Sin categoría').trim(),
+        weight: state.colsN.weight && r[2] ? parseFloat(r[2].replace(',','.')) || 1 : 1
+      })).filter(n => n.name !== '');
+
+      const cats = Array.from(new Set(state.rawNodes.map(n => n.category)));
+      state.categories = cats;
+      const scale = d3.scaleOrdinal(CONF.colorScheme).domain(cats);
+      state.colors = {};
+      cats.forEach(c => state.colors[c] = scale(c));
+      
+      renderLegend();
+    }
+
+    function processLinks(text) {
+      const rows = parseCSV(text);
+      if (rows.length < 2) return;
+
+      const headers = rows[0].map(h => h.trim());
+      state.colsL.weight = headers.length >= 3;
+      state.colsL.type = headers.length >= 4;
+      state.colsL.dir = headers.length >= 5;
+
+      let omitted = 0;
+      let omittedOrigins = new Set();
+      
+      state.rawLinks = [];
+      rows.slice(1).forEach(r => {
+        const source = (r[0] || '').trim();
+        const target = (r[1] || '').trim();
+        
+        // Validación de vacíos
+        if (!source || !target) {
+          omitted++;
+          if (source) omittedOrigins.add(source);
+          return;
+        }
+
+        state.rawLinks.push({
+          source, target,
+          weight: state.colsL.weight && r[2] ? parseFloat(r[2].replace(',','.')) || 1 : 1,
+          type: state.colsL.type && r[3] ? r[3].trim() : CONF.lineSolidVal,
+          dir: state.colsL.dir && r[4] ? r[4].trim() : 'Origen → Destino'
+        });
+      });
+
+      state.warnings = [];
+      if (omitted > 0) {
+        let msg = `Omitidas ${omitted} fila(s) de Conexiones por campos vacíos.`;
+        if (omittedOrigins.size > 0) msg += ` Orígenes afectados: ${Array.from(omittedOrigins).join(', ')}.`;
+        state.warnings.push(msg);
+      }
+    }
+
+    function checkReady() {
+      const p1 = document.getElementById('overlay-status');
+      if (state.rawNodes.length && state.rawLinks.length) {
+        document.getElementById('startup-overlay').style.display = 'none';
+        buildModel();
+      } else {
+        p1.textContent = `Nodos: ${state.rawNodes.length ? 'OK' : 'Falta'} | Conexiones: ${state.rawLinks.length ? 'OK' : 'Falta'}`;
+      }
+    }
+
+    /* ==========================================
+       4 MODELO DE DATOS
+       ========================================== */
+    function buildModel() {
+      const nodeMap = new Map();
+      state.rawNodes.forEach(n => nodeMap.set(n.name, { ...n, degree: 0, neighbors: new Set() }));
+
+      let missing = new Set();
+      let validLinks = [];
+
+      state.rawLinks.forEach(l => {
+        if (!nodeMap.has(l.source)) missing.add(l.source);
+        if (!nodeMap.has(l.target)) missing.add(l.target);
+        
+        if (nodeMap.has(l.source) && nodeMap.has(l.target)) {
+          validLinks.push({ ...l });
+          const s = nodeMap.get(l.source);
+          const t = nodeMap.get(l.target);
+          s.degree++; t.degree++;
+          s.neighbors.add(t.name); t.neighbors.add(s.name);
+        }
+      });
+
+      if (missing.size > 0) {
+        state.warnings.push(`Nodos en Links no definidos en Points: ${Array.from(missing).slice(0, 5).join(', ')}${missing.size > 5 ? '...' : ''}`);
+      }
+
+      let isolated = 0;
+      nodeMap.forEach(n => { if (n.degree === 0) isolated++; });
+      document.getElementById('isolated-count').textContent = isolated;
+
+      // Aplicar filtros
+      state.nodes = Array.from(nodeMap.values()).filter(n => 
+        !state.hiddenCats.has(n.category) && (state.layers.isolated || n.degree > 0)
+      );
+
+      const activeNames = new Set(state.nodes.map(n => n.name));
+      state.links = validLinks.filter(l => activeNames.has(l.source) && activeNames.has(l.target));
+
+      renderAlerts();
+      renderLayout();
+    }
+
+    /* ==========================================
+       5 ESCALAS
+       ========================================== */
+    function getScales() {
+      const maxW = d3.max(state.nodes, n => state.colsN.weight ? n.weight : n.degree) || 1;
+      const rScale = d3.scaleSqrt().domain([0, maxW]).range([CONF.radiusMin, CONF.radiusMax]);
+      
+      const maxL = d3.max(state.links, l => l.weight) || 1;
+      const wScale = d3.scaleLinear().domain([0, maxL]).range([CONF.linkMin, CONF.linkMax]);
+
+      return { rScale, wScale };
+    }
+
+    /* ==========================================
+       6 MODOS DE VISUALIZACIÓN
+       ========================================== */
+    function renderLayout() {
+      const svg = d3.select('#viz');
+      svg.selectAll('*').remove();
+      state.selectedNode = null; // Reset selection
+
+      if (state.nodes.length === 0) {
+        svg.append('text').attr('x','50%').attr('y','50%').attr('text-anchor','middle').text('No hay datos con los filtros actuales');
+        return;
+      }
+
+      // Contenedor principal con zoom
+      const g = svg.append('g').attr('id', 'zoom-group');
+      
+      // Definición de recursos (Degradados y Flechas)
+      const defs = svg.append('defs');
+      
+      // Construir marcadores de flecha
+      const markerTypes = ['end-arrow', 'start-arrow'];
+      markerTypes.forEach(id => {
+        defs.append('marker')
+          .attr('id', id)
+          .attr('viewBox', '0 -5 10 10')
+          .attr('refX', id === 'end-arrow' ? 22 : -12) // Desplazamiento dinámico (aproximado)
+          .attr('refY', 0)
+          .attr('markerWidth', 6)
+          .attr('markerHeight', 6)
+          .attr('orient', 'auto')
+          .append('path')
+          .attr('d', id === 'end-arrow' ? 'M0,-5L10,0L0,5' : 'M10,-5L0,0L10,5')
+          .attr('fill', '#94a3b8');
+      });
+
+      // Crear gradientes únicos para cada combinación de categorías (Origen -> Destino)
+      const gradMap = new Set();
+      state.links.forEach(l => {
+        const srcNode = state.nodes.find(n => n.name === l.source);
+        const tgtNode = state.nodes.find(n => n.name === l.target);
+        if(!srcNode || !tgtNode) return;
+        
+        const c1 = state.colors[srcNode.category].replace('#','');
+        const c2 = state.colors[tgtNode.category].replace('#','');
+        const gradId = `grad-${c1}-${c2}`;
+        
+        if (!gradMap.has(gradId)) {
+          gradMap.add(gradId);
+          const grad = defs.append('linearGradient').attr('id', gradId).attr('gradientUnits', 'userSpaceOnUse');
+          grad.append('stop').attr('offset', '0%').attr('stop-color', `#${c1}`);
+          grad.append('stop').attr('offset', '100%').attr('stop-color', `#${c2}`);
+        }
+        l.gradId = gradId;
+        l.srcColor = `#${c1}`;
+      });
+
+      const { width, height } = svg.node().getBoundingClientRect();
+      g.attr('transform', `translate(${width/2},${height/2})`);
+
+      try {
+        if (state.mode === 'cuerdas') drawChords(g, width, height);
+        if (state.mode === 'concentrico') drawConcentric(g, width, height, getScales());
+        if (state.mode === 'edgeBundling') drawEdgeBundling(g, width, height, getScales());
+      } catch (err) {
+        console.error(err);
+      }
+
+      setupInteraction(svg, g);
+    }
+
+    // --- MODO: CUERDAS ---
+    function drawChords(g, width, height) {
+      const outerR = Math.min(width, height) * 0.4;
+      const innerR = outerR - 20;
+
+      const idxByName = new Map(), nameByIdx = new Map();
+      state.nodes.forEach((n, i) => { idxByName.set(n.name, i); nameByIdx.set(i, n); });
+      
+      const matrix = Array.from({length: state.nodes.length}, () => Array(state.nodes.length).fill(0));
+      state.links.forEach(l => {
+        const i = idxByName.get(l.source), j = idxByName.get(l.target);
+        if (i !== undefined && j !== undefined) {
+          matrix[i][j] += l.weight;
+          if (l.dir === 'Ambos') matrix[j][i] += l.weight; // Bidireccional
+        }
+      });
+
+      const chord = d3.chord().padAngle(0.04).sortSubgroups(d3.descending)(matrix);
+
+      if (state.layers.links) {
+        g.append('g').selectAll('path')
+          .data(chord).join('path')
+          .attr('class', 'chord-ribbon link-item')
+          .attr('d', d3.ribbon().radius(innerR))
+          .attr('fill', d => {
+            const src = nameByIdx.get(d.source.index);
+            return state.colors[src.category]; // En cuerdas heredamos el color del origen dominante
+          })
+          .attr('opacity', 0.6)
+          .on('mouseover', (e, d) => showLinkTooltip(e, {
+            source: nameByIdx.get(d.source.index).name,
+            target: nameByIdx.get(d.target.index).name,
+            weight: d.source.value
+          }))
+          .on('mouseout', hideTooltip);
+      }
+
+      if (state.layers.nodes) {
+        const group = g.append('g').selectAll('g').data(chord.groups).join('g');
+        group.append('path')
+          .attr('class', 'node node-item')
+          .attr('fill', d => state.colors[nameByIdx.get(d.index).category])
+          .attr('d', d3.arc().innerRadius(innerR).outerRadius(outerR))
+          .on('click', (e, d) => selectNode(e, nameByIdx.get(d.index)))
+          .on('mouseover', function(e, d) {
+            d3.select(this.parentNode).select('text').style('opacity', 1);
+            showNodeTooltip(e, nameByIdx.get(d.index));
+          })
+          .on('mouseout', function(e, d) {
+            if (state.selectedNode !== nameByIdx.get(d.index).name) d3.select(this.parentNode).select('text').style('opacity', 0);
+            hideTooltip();
+          });
+
+        group.append('text')
+          .each(d => d.angle = (d.startAngle + d.endAngle) / 2)
+          .attr('class', 'node-label')
+          .attr('dy', '.35em')
+          .attr('transform', d => `rotate(${d.angle * 180 / Math.PI - 90}) translate(${outerR + 10}) ${d.angle > Math.PI ? "rotate(180)" : ""}`)
+          .attr('text-anchor', d => d.angle > Math.PI ? "end" : "start")
+          .style('opacity', 0)
+          .text(d => nameByIdx.get(d.index).name);
+      }
+    }
+
+    // --- MODO: CONCÉNTRICO ---
+    function drawConcentric(g, width, height, scales) {
+      const maxR = Math.min(width, height) * 0.4;
+      const rings = 3, ringStep = maxR / rings;
+      
+      const sorted = [...state.nodes].sort((a,b) => (state.colsN.weight ? b.weight - a.weight : b.degree - a.degree));
+      const perRing = Math.ceil(sorted.length / rings);
+      
+      const posMap = new Map();
+      sorted.forEach((n, i) => {
+        const ring = Math.min(Math.floor(i / perRing), rings - 1);
+        const r = (ring + 1) * ringStep;
+        const totalInRing = ring === rings - 1 ? sorted.length - (perRing * (rings - 1)) : perRing;
+        const angle = ((i % perRing) / totalInRing) * 2 * Math.PI;
+        n.x = r * Math.cos(angle);
+        n.y = r * Math.sin(angle);
+        posMap.set(n.name, n);
+      });
+
+      // Dibujar guías
+      for(let i=1; i<=rings; i++) g.append('circle').attr('r', i*ringStep).attr('fill','none').attr('stroke','#e2e8f0').attr('stroke-dasharray','2,4');
+
+      drawLinksAndNodes(g, posMap, scales, true);
+    }
+
+    // --- MODO: EDGE BUNDLING ---
+    function drawEdgeBundling(g, width, height, scales) {
+      const r = Math.min(width, height) * 0.4;
+      const posMap = new Map();
+      state.nodes.forEach((n, i) => {
+        n.angle = (i / state.nodes.length) * 2 * Math.PI - Math.PI/2;
+        n.x = r * Math.cos(n.angle);
+        n.y = r * Math.sin(n.angle);
+        posMap.set(n.name, n);
+      });
+
+      drawLinksAndNodes(g, posMap, scales, false, true, r);
+    }
+
+    // --- Auxiliar: Dibuja enlaces y nodos comunes (Concéntrico y Edge Bundling) ---
+    function drawLinksAndNodes(g, posMap, scales, straight = true, bundled = false, bundleRadius = 0) {
+      if (state.layers.links) {
+        const linkData = state.links.map(l => ({ ...l, s: posMap.get(l.source), t: posMap.get(l.target) })).filter(l => l.s && l.t);
+        
+        if (straight) {
+          g.append('g').selectAll('line')
+            .data(linkData).join('line')
+            .attr('class', 'link-path link-item')
+            .attr('x1', d => d.s.x).attr('y1', d => d.s.y).attr('x2', d => d.t.x).attr('y2', d => d.t.y)
+            .attr('stroke', d => `url(#${d.gradId})`) // Degradado de Origen a Destino
+            .attr('stroke-width', d => scales.wScale(d.weight))
+            .attr('stroke-dasharray', d => d.type === CONF.lineDashedVal ? CONF.dashArray : 'none')
+            .attr('marker-end', d => d.dir.includes('Destino') || d.dir === 'Ambos' ? 'url(#end-arrow)' : '')
+            .attr('marker-start', d => d.dir.includes('Origen') && d.dir !== 'Origen → Destino' || d.dir === 'Ambos' ? 'url(#start-arrow)' : '')
+            .attr('opacity', 0.5)
+            .on('mouseover', (e, d) => showLinkTooltip(e, d))
+            .on('mouseout', hideTooltip);
+        } else if (bundled) {
+          const line = d3.lineRadial().curve(d3.curveBundle.beta(0.85)).radius(d => d.r).angle(d => d.a);
+          g.append('g').selectAll('path')
+            .data(linkData).join('path')
+            .attr('class', 'link-path link-item')
+            .attr('d', d => line([
+              {a: d.s.angle + Math.PI/2, r: bundleRadius},
+              {a: (d.s.angle + d.t.angle)/2 + Math.PI/2, r: bundleRadius*0.2},
+              {a: d.t.angle + Math.PI/2, r: bundleRadius}
+            ]))
+            .attr('fill', 'none')
+            .attr('stroke', d => `url(#${d.gradId})`)
+            .attr('stroke-width', d => scales.wScale(d.weight))
+            .attr('stroke-dasharray', d => d.type === CONF.lineDashedVal ? CONF.dashArray : 'none')
+            .attr('opacity', 0.4)
+            .on('mouseover', (e, d) => showLinkTooltip(e, d))
+            .on('mouseout', hideTooltip);
+        }
+      }
+
+      if (state.layers.nodes) {
+        const nodeG = g.append('g').selectAll('g').data(Array.from(posMap.values())).join('g')
+          .attr('transform', d => `translate(${d.x},${d.y})`)
+          .attr('class', 'node node-item')
+          .on('click', (e, d) => selectNode(e, d))
+          .on('mouseover', function(e, d) {
+            d3.select(this).select('text').style('opacity', 1);
+            showNodeTooltip(e, d);
+          })
+          .on('mouseout', function(e, d) {
+            if (state.selectedNode !== d.name) d3.select(this).select('text').style('opacity', 0);
+            hideTooltip();
+          });
+
+        nodeG.append('circle')
+          .attr('r', d => scales.rScale(state.colsN.weight ? d.weight : d.degree))
+          .attr('fill', d => state.colors[d.category])
+          .attr('stroke', '#fff').attr('stroke-width', 1.5);
+
+        nodeG.append('text')
+          .attr('class', 'node-label')
+          .attr('dy', bundled ? '.35em' : d => -(scales.rScale(state.colsN.weight ? d.weight : d.degree) + 5))
+          .attr('x', bundled ? d => d.x > 0 ? 8 : -8 : 0)
+          .attr('text-anchor', bundled ? (d => d.x > 0 ? 'start' : 'end') : 'middle')
+          .style('opacity', 0)
+          .text(d => d.name);
+      }
+    }
+
+    /* ==========================================
+       7 INTERACCIÓN
+       ========================================== */
+    function setupInteraction(svg, g) {
+      svg.call(d3.zoom().scaleExtent([0.1, 4]).on('zoom', e => g.attr('transform', e.transform)))
+         .on('click', e => { if (e.target.tagName === 'svg') clearSelection(); });
+    }
+
+    // Click en Nodo: Resalta nodo, conexiones y vecinos
+    function selectNode(event, node) {
+      event.stopPropagation();
+      state.selectedNode = node.name;
+      const { name, neighbors } = node;
+
+      // Actualizar Nodos
+      d3.selectAll('.node-item').style('opacity', d => {
+        // En cuerdas, los datos están anidados diferentemente (d.index vs d.name)
+        const nodeName = d.name || (state.nodes[d.index] ? state.nodes[d.index].name : null);
+        if (!nodeName) return 0.1;
+        return (nodeName === name || neighbors.has(nodeName)) ? 1 : 0.1;
+      });
+
+      // Asegurar que las etiquetas de los vecinos sean visibles
+      d3.selectAll('.node-item text').style('opacity', d => {
+        const nodeName = d.name || (state.nodes[d.index] ? state.nodes[d.index].name : null);
+        return (nodeName === name || neighbors.has(nodeName)) ? 1 : 0;
+      });
+
+      // Actualizar Enlaces
+      d3.selectAll('.link-item').style('opacity', d => {
+        const src = d.source.name || d.source; // Manejo para d3.chord (d.source.index)
+        const tgt = d.target.name || d.target;
+        // Identificar origen/destino reales
+        let sName = typeof src === 'string' ? src : (state.nodes[src.index] ? state.nodes[src.index].name : '');
+        let tName = typeof tgt === 'string' ? tgt : (state.nodes[tgt.index] ? state.nodes[tgt.index].name : '');
+        return (sName === name || tName === name) ? 1 : 0.05;
+      });
+    }
+
+    function clearSelection() {
+      state.selectedNode = null;
+      d3.selectAll('.node-item').style('opacity', 1);
+      d3.selectAll('.link-item').style('opacity', state.mode === 'cuerdas' ? 0.6 : 0.5);
+      d3.selectAll('.node-item text').style('opacity', 0);
+    }
+
+    // Tooltips
+    function showTooltip(e, content) {
+      const t = document.getElementById('tooltip');
+      t.innerHTML = content;
+      t.style.opacity = 1;
+      let x = e.pageX + 15, y = e.pageY + 15;
+      if (x + t.offsetWidth > window.innerWidth) x = e.pageX - t.offsetWidth - 15;
+      if (y + t.offsetHeight > window.innerHeight) y = e.pageY - t.offsetHeight - 15;
+      t.style.left = x + 'px'; t.style.top = y + 'px';
+    }
+    
+    function hideTooltip() { document.getElementById('tooltip').style.opacity = 0; }
+
+    function showNodeTooltip(e, d) {
+      showTooltip(e, `
+        <div class="tooltip-header">${d.name}</div>
+        Categoría: ${d.category}<br>
+        Conexiones: ${d.degree}<br>
+        ${state.colsN.weight ? `Peso: ${d.weight}` : ''}
+      `);
+    }
+
+    function showLinkTooltip(e, d) {
+      showTooltip(e, `
+        <div class="tooltip-header">Conexión</div>
+        Origen: ${d.source}<br>
+        Destino: ${d.target}<br>
+        ${state.colsL.weight ? `Peso: ${d.weight}<br>` : ''}
+        ${state.colsL.type && d.type ? `Tipo: ${d.type}<br>` : ''}
+        ${state.colsL.dir && d.dir ? `Sentido: ${d.dir}` : ''}
+      `);
+    }
+
+    /* ==========================================
+       8 INTERFAZ (LOGICA DE PANELES)
+       ========================================== */
+    function renderLegend() {
+      const c = d3.select('#legend-container').html('');
+      state.categories.forEach(cat => {
+        const div = c.append('div').attr('class', 'legend-item');
+        div.append('input').attr('type', 'checkbox').property('checked', !state.hiddenCats.has(cat))
+          .on('change', function() {
+            if (this.checked) state.hiddenCats.delete(cat); else state.hiddenCats.add(cat);
+            buildModel();
+          });
+        div.append('div').attr('class', 'legend-color').style('background', state.colors[cat]);
+        div.append('span').text(cat);
+      });
+    }
+
+    function renderAlerts() {
+      const c = d3.select('#alerts-container').html('');
+      state.warnings.forEach(w => c.append('div').attr('class', 'alert').text(w));
+    }
+
+    /* ==========================================
+       9 INICIO
+       ========================================== */
+    window.onload = () => {
+      // Eventos de carga
+      document.getElementById('nodes-file').addEventListener('change', e => handleFile(e, 'nodes'));
+      document.getElementById('links-file').addEventListener('change', e => handleFile(e, 'links'));
+      document.getElementById('overlay-nodes').addEventListener('change', e => handleFile(e, 'nodes'));
+      document.getElementById('overlay-links').addEventListener('change', e => handleFile(e, 'links'));
+
+      // Eventos UI
+      document.getElementById('sidebar-toggle').addEventListener('click', function() {
+        const s = document.getElementById('sidebar');
+        s.classList.toggle('collapsed');
+        this.textContent = s.classList.contains('collapsed') ? '‹' : '›';
+      });
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          state.mode = this.dataset.mode;
+          renderLayout();
+        });
+      });
+
+      ['nodes','links','isolated'].forEach(l => {
+        document.getElementById(`layer-${l}`).addEventListener('change', function() {
+          state.layers[l] = this.checked;
+          if (l === 'isolated') buildModel(); else renderLayout();
+        });
+      });
+
+      window.addEventListener('resize', () => { if (state.nodes.length) renderLayout(); });
+    };
+  </script>
+</body>
+</html>
