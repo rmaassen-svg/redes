@@ -54,6 +54,14 @@
     }
 
     .app-title { font-weight: 700; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+    .header-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .header-file { position: relative; margin: 0; width: auto; }
+    .header-file .btn {
+      width: auto; min-width: 160px; padding: 0.5rem 0.9rem; font-size: 0.82rem;
+    }
+    .header-file input[type=file] {
+      position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+    }
     
     .tabs { display: flex; gap: 0.5rem; background: #f1f5f9; padding: 0.25rem; border-radius: 0.5rem; }
     .tab-btn {
@@ -92,6 +100,19 @@
     }
     .btn-primary { background: var(--primary-color); color: white; }
     .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary {
+      background: #e2e8f0; color: var(--text-main); border-color: var(--border-color);
+    }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .file-wrapper { position: relative; margin-bottom: 0.5rem; }
+    .color-control {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+      font-size: 0.875rem; color: var(--text-main); margin-bottom: 0.75rem;
+    }
+    .color-control input[type="color"] {
+      width: 52px; height: 36px; border: 1px solid var(--border-color); border-radius: 0.5rem;
+      background: transparent; padding: 0.2rem; cursor: pointer;
+    }
     .file-wrapper { position: relative; margin-bottom: 0.5rem; }
     .file-wrapper input[type=file] { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 
@@ -129,10 +150,16 @@
   <!-- 8 INTERFAZ (ENCABEZADO Y PESTAÑAS) -->
   <header>
     <div class="app-title">🌐 [Países Productores]</div>
-    <div class="tabs" id="mode-tabs">
-      <button class="tab-btn active" data-mode="cuerdas">Cuerdas</button>
-      <button class="tab-btn" data-mode="concentrico">Concéntrico</button>
-      <button class="tab-btn" data-mode="edgeBundling">Edge Bundling</button>
+    <div class="header-actions">
+      <div class="file-wrapper header-file">
+        <button class="btn btn-primary" type="button">Cargar adicionales</button>
+        <input type="file" id="header-files" accept=".csv" multiple>
+      </div>
+      <div class="tabs" id="mode-tabs">
+        <button class="tab-btn active" data-mode="cuerdas">Cuerdas</button>
+        <button class="tab-btn" data-mode="concentrico">Concéntrico</button>
+        <button class="tab-btn" data-mode="edgeBundling">Edge Bundling</button>
+      </div>
     </div>
   </header>
 
@@ -163,6 +190,15 @@
           <label class="checkbox-label"><input type="checkbox" id="layer-nodes" checked> Mostrar Nodos</label>
           <label class="checkbox-label"><input type="checkbox" id="layer-links" checked> Mostrar Conexiones</label>
           <label class="checkbox-label"><input type="checkbox" id="layer-isolated"> Mostrar Aislados (<span id="isolated-count">0</span>)</label>
+        </div>
+
+        <div>
+          <div class="section-title">Fondo</div>
+          <label class="color-control" for="bg-color-picker">
+            <span>Color de fondo</span>
+            <input type="color" id="bg-color-picker" value="#f8fafc">
+          </label>
+          <button class="btn btn-secondary" id="bg-color-reset" type="button">Restablecer</button>
         </div>
 
         <div>
@@ -217,7 +253,8 @@
       mode: 'cuerdas',
       layers: { nodes: true, links: true, isolated: false },
       selectedNode: null,  // Para el click highlighting
-      warnings: []
+      warnings: [],
+      backgroundColor: '#f8fafc'
     };
 
     /* ==========================================
@@ -241,6 +278,55 @@
         checkReady();
       };
       reader.readAsText(file, 'UTF-8');
+    }
+
+    function classifyCSVType(fileName) {
+      const name = (fileName || '').toLowerCase();
+      if (name.includes('point') || name.includes('node')) return 'nodes';
+      if (name.includes('link') || name.includes('edge')) return 'links';
+      return 'nodes';
+    }
+
+    function handleFileList(fileList) {
+      if (!fileList || !fileList.length) return;
+      Array.from(fileList).forEach(file => {
+        const type = classifyCSVType(file.name);
+        const reader = new FileReader();
+        reader.onload = evt => {
+          if (type === 'nodes') processNodes(evt.target.result);
+          else processLinks(evt.target.result);
+          checkReady();
+        };
+        reader.readAsText(file, 'UTF-8');
+      });
+    }
+
+    async function loadDefaultData() {
+      const status = document.getElementById('overlay-status');
+      const defaultFiles = [
+        'Data/Points.productoe pais.csv',
+        'Data/Links.productos pais.csv'
+      ];
+
+      if (status) status.textContent = 'Cargando datos iniciales de la carpeta Data...';
+
+      try {
+        const responses = await Promise.all(defaultFiles.map(file => fetch(file)));
+        const failed = responses.find(response => !response.ok);
+        if (failed) {
+          throw new Error(`No se pudo cargar ${failed.url} (${failed.status})`);
+        }
+
+        const texts = await Promise.all(responses.map(response => response.text()));
+        processNodes(texts[0]);
+        processLinks(texts[1]);
+        checkReady();
+      } catch (error) {
+        console.error('No se pudieron cargar los datos por defecto:', error);
+        if (status) {
+          status.textContent = 'No se pudieron cargar los CSV por defecto. Puedes cargarlos manualmente desde el botón superior derecho.';
+        }
+      }
     }
 
     function processNodes(text) {
@@ -712,6 +798,15 @@
       state.warnings.forEach(w => c.append('div').attr('class', 'alert').text(w));
     }
 
+    function applyBackgroundColor(color) {
+      state.backgroundColor = color;
+      document.documentElement.style.setProperty('--bg-color', color);
+      const vizContainer = document.getElementById('viz-container');
+      if (vizContainer) vizContainer.style.background = color;
+      const bgPicker = document.getElementById('bg-color-picker');
+      if (bgPicker) bgPicker.value = color;
+    }
+
     /* ==========================================
        9 INICIO
        ========================================== */
@@ -721,6 +816,22 @@
       document.getElementById('links-file').addEventListener('change', e => handleFile(e, 'links'));
       document.getElementById('overlay-nodes').addEventListener('change', e => handleFile(e, 'nodes'));
       document.getElementById('overlay-links').addEventListener('change', e => handleFile(e, 'links'));
+      document.getElementById('header-files').addEventListener('change', e => {
+        handleFileList(e.target.files);
+        e.target.value = '';
+      });
+
+      const bgPicker = document.getElementById('bg-color-picker');
+      const bgReset = document.getElementById('bg-color-reset');
+      bgPicker.addEventListener('input', function() {
+        applyBackgroundColor(this.value);
+      });
+      bgReset.addEventListener('click', function() {
+        applyBackgroundColor('#f8fafc');
+      });
+
+      applyBackgroundColor(state.backgroundColor);
+      loadDefaultData();
 
       // Eventos UI
       document.getElementById('sidebar-toggle').addEventListener('click', function() {

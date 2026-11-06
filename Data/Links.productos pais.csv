@@ -1,0 +1,34 @@
+﻿Origen,Destino,Peso
+ITALY,Vehículos de Pasajeros,35
+ITALY,Medicamentos,30
+ITALY,Maquinaria Industrial,25
+SPAIN,Vehículos de Pasajeros,40
+SPAIN,Medicamentos,25
+SPAIN,Vehículos de Pasajeros,20
+JAPAN,Vehículos de Pasajeros,60
+JAPAN,Circuitos Integrados,45
+JAPAN,Maquinaria Industrial,35
+INDIA,Medicamentos,50
+INDIA,Petróleo Refinado,40
+INDIA,Circuitos Integrados,20
+MEXICO,Vehículos de Pasajeros,50
+MEXICO,Circuitos Integrados,35
+MEXICO,Petróleo Refinado,25
+TURKIYE,Vehículos de Pasajeros,30
+TURKIYE,Maquinaria Industrial,25
+TURKIYE,Petróleo Refinado,20
+USA,Circuitos Integrados,65
+USA,Medicamentos,55
+USA,Vehículos de Pasajeros,45
+FRANCE,Medicamentos,45
+FRANCE,Vehículos de Pasajeros,35
+FRANCE,Maquinaria Industrial,30
+PERU,Petróleo Refinado,25
+PERU,Maquinaria Industrial,15
+PERU,Medicamentos,10
+SOUTH KOREA,Circuitos Integrados,60
+SOUTH KOREA,Vehículos de Pasajeros,45
+SOUTH KOREA,Petróleo Refinado,30
+THAILAND,Circuitos Integrados,35
+THAILAND,Vehículos de Pasajeros,30
+THAILAND,Maquinaria Industrial,20
